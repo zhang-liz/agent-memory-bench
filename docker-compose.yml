@@ -1,0 +1,6 @@
+services:
+  falkordb:
+    image: falkordb/falkordb:6.0.1
+    ports:
+      - "6379:6379"
+      - "3000:3000"
