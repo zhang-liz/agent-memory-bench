@@ -365,6 +365,13 @@ def main(argv=None) -> None:
     graphs.add_argument("--out", default=str(ROOT / "results"))
     graphs.set_defaults(fn=lambda a: __import__("amb.graphs", fromlist=["main"]).main(a))
 
+    ten = sub.add_parser("tenants", help="one memory graph per user: N graphs in one FalkorDB, read latency, delete time (no LLM)")
+    ten.add_argument("--graphs", type=int, default=10000)
+    ten.add_argument("--runs", type=int, default=3)
+    ten.add_argument("--writers", type=int, default=8)
+    ten.add_argument("--out", default=str(ROOT / "results"))
+    ten.set_defaults(fn=lambda a: __import__("amb.tenants", fromlist=["main"]).main(a))
+
     an = sub.add_parser("analyze", help="tables and charts from result logs")
     an.add_argument("--out", default=str(ROOT / "results"))
     an.set_defaults(fn=lambda a: __import__("amb.analyze", fromlist=["main"]).main(a))

@@ -6,3 +6,4 @@ data/
 scratch/
 *.sqlite
 .env
+.DS_Store

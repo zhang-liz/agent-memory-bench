@@ -69,6 +69,107 @@ def context_chart(runs, L: int, out: Path, plt) -> None:
     plt.close(fig)
 
 
+def hook_slide(ops: Path, out: Path, plt, only_full: bool = False) -> None:
+    """Opening slide: running total of tokens read, full history vs graph, with a real message and question.
+
+    only_full draws the full-history line alone: the opener shows the bill before the fix.
+    """
+    fig = plt.figure(figsize=(19.2, 10.8), dpi=100)
+    fig.patch.set_facecolor("#1e1e1e")
+    head = "Remember everything: 20M tokens." if only_full else "Same answers. 4.5x fewer tokens."
+    fig.text(108 / 1920, 1 - 70 / 1080, head, fontsize=72, fontweight="light", color=INK, va="top")
+    if only_full:
+        # The problem the title names: one agent and one inbox already costs this; long-running agents multiply it.
+        fig.text(108 / 1920, 1 - 190 / 1080, "One agent, one inbox. Now: months, 10,000 users.",
+                 fontsize=26, color=INK2, va="top")
+    ax = fig.add_axes([170 / 1920, 1 - 960 / 1080, 760 / 1920, 600 / 1080])
+    ax.set_facecolor("#1e1e1e")
+    for side in ("top", "right"):
+        ax.spines[side].set_visible(False)
+    for side in ("left", "bottom"):
+        ax.spines[side].set_color(GRID)
+    ax.tick_params(colors=INK2, labelsize=20)
+    ax.grid(axis="y", color=GRID, linewidth=0.8)
+    lines = (("full", "Full history", GRAY),) if only_full else (("full", "Full history", GRAY), ("graph", "Graph memory", PINK))
+    for cond, label, color in lines:
+        calls = [json.loads(x) for x in (ops / cond / "L200-w1-r1.jsonl").open()]
+        calls = [c for c in calls if c["type"] == "call"]
+        xs, ys, total = [], [], 0
+        for c in calls:
+            total += c["usage"]["context_tokens"]
+            xs.append(c["cursor"])
+            ys.append(total / 1e6)
+        ax.plot(xs, ys, color=color, linewidth=4)
+        ax.annotate(f"{label}\n{ys[-1]:.1f}M", (xs[-1], ys[-1]), xytext=(14, 0), textcoords="offset points",
+                    va="center", fontsize=22, color=color, fontweight="bold" if cond == "graph" else "normal")
+    ax.set_xlim(0, 300)
+    ax.set_xticks([0, 50, 100, 150, 200])
+    ax.set_ylim(0, 22)
+    ax.set_yticks([0, 5, 10, 15, 20])
+    ax.set_xlabel("Inbox items read (200 messages + 25 questions)", color=INK2, fontsize=22)
+    ax.set_ylabel("Tokens read so far (millions)", color=INK2, fontsize=22)
+    # Right column: the inbox drawn as real items from the test world (seed 1), so the room
+    # sees Slack, a ticket and an email, each padded with logs, before the question lands.
+    from matplotlib.patches import Circle, FancyBboxPatch, Rectangle
+
+    cv = fig.add_axes([0, 0, 1, 1])
+    cv.set_xlim(0, 1920)
+    cv.set_ylim(1080, 0)
+    cv.axis("off")
+    cv.patch.set_alpha(0)
+    x0, w = 1010, 850
+    CARD, LOG = "#2a2a2a", "#5a5a5a"
+
+    def card(y, h, edge, lw):
+        cv.add_patch(FancyBboxPatch((x0, y), w, h, boxstyle="round,pad=0,rounding_size=14",
+                                    facecolor=CARD, edgecolor=edge, linewidth=lw))
+
+    def icon(kind, x, y):
+        s = 46
+        if kind == "slack":
+            cv.add_patch(FancyBboxPatch((x, y), s, s, boxstyle="round,pad=0,rounding_size=10", facecolor="#4a4a4a", edgecolor="none"))
+            cv.text(x + s / 2, y + s / 2 + 2, "#", ha="center", va="center", fontsize=24, fontweight="bold", color=INK)
+        elif kind == "ticket":
+            cv.add_patch(FancyBboxPatch((x, y + 8), s, s - 16, boxstyle="round,pad=0,rounding_size=4", facecolor="#4a4a4a", edgecolor="none"))
+            for cx in (x, x + s):
+                cv.add_patch(Circle((cx, y + s / 2), 7, facecolor=CARD, edgecolor="none"))
+            cv.plot([x + 30, x + 30], [y + 12, y + s - 12], color=CARD, linewidth=2, linestyle=(0, (3, 3)))
+        else:
+            cv.add_patch(Rectangle((x, y + 8), s, s - 16, facecolor="#4a4a4a", edgecolor="none"))
+            cv.plot([x, x + s / 2, x + s], [y + 8, y + s / 2, y + 8], color=CARD, linewidth=3)
+
+    def item(y, h, kind, title, body, log, tag=None, hot=False):
+        card(y, h, INK if hot else "#444444", 3 if hot else 1.5)
+        icon(kind, x0 + 22, y + 20)
+        cv.text(x0 + 86, y + 44, title, fontsize=20, fontweight="bold", color=INK, va="center")
+        if tag:
+            cv.text(x0 + w - 24, y + 44, tag, fontsize=18, color=INK2, va="center", ha="right")
+        for j, line in enumerate(body):
+            cv.text(x0 + 86, y + 86 + 38 * j, line, fontsize=22, color=INK if hot else INK2, va="center")
+        cv.text(x0 + 86, y + h - 18, log, fontsize=12, color=LOG, va="center", family="monospace")
+
+    cv.text(x0, 232, "The inbox: 200 items, each with 15-25 log lines", fontsize=22, color=INK2, va="center")
+    item(262, 150, "ticket", "TICKET OPS-4001", ["session-worker: owned by Team Cobalt"],
+         "2026-09-03T18:29:34Z WARN ratings-queue slow query duration_ms=22499 ...")
+    item(427, 150, "email", "From: eng-leads@acme.example", ["wallet-api moves to Team Juniper"],
+         "2026-09-12T13:06:18Z INFO ledger-sync-worker health check ok ...")
+    # Message 99 and question 9 (seed 1). Names simplified for the stage: Olu -> Tom, Leila -> Emma.
+    item(592, 188, "slack", "#payments  Tom", ["handing the pager to Emma,", "ping them for anything urgent"],
+         "2026-09-13T20:25:11Z INFO scheduler-worker cache miss key=user:47684 ...", tag="Message 99", hot=True)
+    # The question arrives later in the same stream; the answer sits under it.
+    cv.add_patch(FancyBboxPatch((x0, 800), w, 115, boxstyle="round,pad=0,rounding_size=14",
+                                facecolor="#383838", edgecolor="none"))
+    cv.text(x0 + 30, 828, "Question, 21 messages later", fontsize=18, color=INK2, va="center")
+    cv.text(x0 + 30, 876, "Who is the primary on-call for Team Payments right now?", fontsize=20, color=INK, va="center")
+    if only_full:
+        cv.text(x0, 970, "Full history: Emma. Correct. 100%.", fontsize=28, color=INK, va="center")
+        fig.savefig(out / "slide_opener_full.png", facecolor="#1e1e1e")
+    else:
+        cv.text(x0, 970, "Both agents: Emma.  Both scored 25/25.", fontsize=28, color=PINK, va="center")
+        fig.savefig(out / "slide_hook.png", facecolor="#1e1e1e")
+    plt.close(fig)
+
+
 def cost_chart(runs, L: int, out: Path, plt) -> None:
     conds = [c for c in ("full", "compact", "vector", "sqlite", "graph") if any(r["condition"] == c and r["L"] == L for r in runs)]
     fig, ax = _fig(plt)
@@ -76,19 +177,22 @@ def cost_chart(runs, L: int, out: Path, plt) -> None:
     ax.grid(axis="x", color=GRID, linewidth=0.8)
     hot = [np.mean([r["hot_usd"] for r in runs if r["condition"] == c and r["L"] == L]) for c in conds]
     cold = [np.mean([r["cold_usd"] for r in runs if r["condition"] == c and r["L"] == L]) for c in conds]
+    rs = {c: [r for r in runs if r["condition"] == c and r["L"] == L] for c in conds}
+    score = {c: (sum(a["correct"] for r in rs[c] for a in r["answers"]), sum(r["questions"] for r in rs[c])) for c in conds}
     ys = np.arange(len(conds))
     for y, c, h, k in zip(ys, conds, hot, cold):
         ax.barh(y, h, 0.62, color=_color(c), edgecolor=SURFACE, linewidth=2)
         if k:
             ax.barh(y, k, 0.62, left=h, color=_color(c), alpha=0.45, edgecolor=SURFACE, linewidth=2, hatch="//")
         # "\\$" keeps matplotlib from reading the dollar signs as math mode.
-        ax.annotate(f"\\${h + k:.2f}" + (f" (\\${k:.2f} extraction)" if k else ""), (h + k, y), xytext=(8, 0),
+        got, total = score[c]
+        ax.annotate(f"{got}/{total} right  \\${h + k:.2f}", (h + k, y), xytext=(8, 0),
                     textcoords="offset points", va="center", fontsize=NOTE, color=PINK if c == "graph" else INK)
     ax.set_yticks(ys, [LABELS[c].split(" (")[0] for c in conds], fontsize=LABEL)
     for t, c in zip(ax.get_yticklabels(), conds):
         t.set_color(PINK if c == "graph" else INK2)
     ax.invert_yaxis()
-    ax.set_xlabel("USD per task", color=INK2, fontsize=LABEL)
+    ax.set_xlabel("USD per task (hatched: extraction)", color=INK2, fontsize=LABEL)
     ax.margins(x=0.75)
     fig.tight_layout()
     fig.savefig(out / f"slide_cost_L{L}.png", facecolor=SURFACE)
@@ -252,56 +356,118 @@ def next_session_slide(big: Path, cache: Path, out: Path, plt) -> None:
 
     fig = plt.figure(figsize=(19.2, 10.8), dpi=100)
     fig.patch.set_facecolor("#1e1e1e")
-    fig.text(108 / 1920, 1 - 70 / 1080, "The next session", fontsize=96, fontweight="light", color=INK, va="top")
-    fig.text(108 / 1920, 1 - 245 / 1080,
-             "A new agent with an empty context gets 20 questions\nabout a company with 500 services.",
-             fontsize=28, color=INK2, va="top", linespacing=1.4)
-    ax = fig.add_axes([440 / 1920, 250 / 1080, 1250 / 1920, 450 / 1080])
+    for y, line in ((50, "New session? Graph is up to"), (160, "half the cost per right answer.")):
+        fig.text(108 / 1920, 1 - y / 1080, line, fontsize=72, fontweight="light", color=INK, va="top")
+    fig.text(108 / 1920, 1 - 300 / 1080,
+             "A new agent with an empty context gets 20 questions about 500 services.",
+             fontsize=28, color=INK2, va="top")
+    # Cost per right answer folds price and mistakes into one number: a cheap wrong answer is not cheap.
+    # Shown per 100 right answers so the values read as dollars. No memory scores 0/20, so it is a footnote.
+    rows = sorted(((c, label, got, total, 100 * per / got, up) for c, label, got, total, per, up in data if got),
+                  key=lambda r: -r[4])
+    graph = next(r[4] for r in rows if r[0] == "graph")
+    top = rows[0][4]
+    ax = fig.add_axes([440 / 1920, 230 / 1080, 1250 / 1920, 450 / 1080])
     ax.set_facecolor("#1e1e1e")
     for s in ax.spines.values():
         s.set_visible(False)
-    ys = np.arange(len(data))
-    for y, (c, label, got, total, per, up) in zip(ys, data):
-        color = _color(c)
-        ax.barh(y, 0.7 * got / total, 0.62, color=color if got else GRAY)
+    for y, (c, label, got, total, cpr, up) in enumerate(rows):
         ink = PINK if c == "graph" else INK
+        w = 0.5 * cpr / top
+        ax.barh(y, w, 0.62, color=_color(c))
         ax.text(-0.02, y, label, ha="right", va="center", fontsize=28, color=ink, transform=ax.get_yaxis_transform())
-        ax.text(0.7 * got / total + 0.015, y, f"{got}/{total}", va="center", fontsize=28, color=ink)
-        ax.text(1.1, y, f"\\${up:.2f}", va="center", ha="right", fontsize=26, color=INK2)
-        ax.text(1.4, y, f"\\${per:.2f}", va="center", ha="right", fontsize=26, color=INK2)
-    ax.text(1.1, -0.95, "Upkeep", ha="right", fontsize=24, color=INK2)
-    ax.text(1.4, -0.95, "Per session", ha="right", fontsize=24, color=INK2)
+        ax.annotate(f"\\${cpr:.2f}", (w, y), xytext=(10, 0), textcoords="offset points", va="center", fontsize=28, color=ink)
+        if c != "graph":
+            ax.annotate(f"graph {100 * (graph / cpr - 1):.0f}%", (w, y), xytext=(95, 0), textcoords="offset points",
+                        va="center", fontsize=28, color=PINK)
+        ax.text(1.12, y, f"{got}/{total}", va="center", ha="right", fontsize=26, color=PINK if c == "graph" else INK2)
+        ax.text(1.4, y, f"\\${up:.2f}", va="center", ha="right", fontsize=26, color=PINK if c == "graph" else INK2)
+    ax.text(0, -0.95, "Cost per 100 right answers", fontsize=26, color=INK2)
+    ax.text(1.12, -0.95, "Right", ha="right", fontsize=26, color=INK2)
+    ax.text(1.4, -0.95, "Upkeep", ha="right", fontsize=26, color=INK2)
     ax.set_xlim(0, 1.4)
-    ax.set_ylim(len(data) - 0.5, -1.3)
+    ax.set_ylim(len(rows) - 0.5, -1.3)
     ax.set_xticks([])
     ax.set_yticks([])
-    fig.text(108 / 1920, 215 / 1080,
-             "With 50 services, every setup with memory scored 20/20.\n"
-             "Upkeep: writing the note, extra work to keep memory files, or background extraction.\n"
-             "Graph, SQLite and vector missed the same 2: one name the extractor got wrong.",
-             fontsize=22, color=INK2, va="top", linespacing=1.5)
+    fig.text(108 / 1920, 1 - 880 / 1080,
+             "No memory: 0/20. With 50 services, every setup with memory scored 20/20.\n"
+             "Upkeep, paid once: writing the note, keeping memory files, or background extraction.",
+             fontsize=26, color=INK2, va="top", linespacing=1.3)
     fig.savefig(out / "slide_next_session.png", facecolor="#1e1e1e")
     plt.close(fig)
 
 
+# The take-home is a decision rule: which memory to use, and when.
 TAKEAWAYS = [
-    ("Get memory out of the context window.", "4.5x fewer tokens, 41% cheaper, same answers."),
-    ("Inside one session, compaction is a strong free baseline.", "At 400 messages it tied the graph."),
-    ("Across sessions, a store built in the background pays off.", "18/20 at 500 services, and the cheapest per new session."),
+    ("One session", "Compaction", "Same score as the graph at 400, for less."),
+    ("Next session, small state", "A handoff note", "Cheapest at 50 services. Failed at 500."),
+    ("Facts change, links chain", "A graph", "5x faster multi-hop at 1M edges.\nUp to half the cost per right answer."),
+    ("Many users, many agents writing", "FalkorDB: one graph per user", "10,000 graphs on a laptop, about 1 ms reads.\nWrite tail: 0.5-1 ms vs others 14-36 ms."),
 ]
 
 
-def takeaways_slide(out: Path, plt) -> None:
-    """Closing summary, drawn as one image so it keeps the deck's font."""
+def takeaways_slide(out: Path, plt, qr: Path | None = None) -> None:
+    """Closing decision rule, drawn as one image so it keeps the deck's font."""
     fig = plt.figure(figsize=(19.2, 10.8), dpi=100)
     fig.patch.set_facecolor("#1e1e1e")
-    fig.text(108 / 1920, 1 - 90 / 1080, "Takeaways", fontsize=110, fontweight="light", color=INK, va="top")
-    for i, (head, sub) in enumerate(TAKEAWAYS):
-        y = 1 - (380 + i * 210) / 1080
-        fig.text(108 / 1920, y, f"0{i + 1}", fontsize=44, fontweight="bold", color=PINK, va="top")
-        fig.text(250 / 1920, y, head, fontsize=40, color=INK, va="top")
-        fig.text(250 / 1920, y - 75 / 1080, sub, fontsize=30, color=INK2, va="top")
+    fig.text(108 / 1920, 1 - 80 / 1080, "Which memory keeps up", fontsize=84, fontweight="light", color=INK, va="top")
+    for i, (when, use, proof) in enumerate(TAKEAWAYS):
+        y = 1 - (270 + i * 140) / 1080
+        fig.text(108 / 1920, y, when, fontsize=30, color=INK2, va="top")
+        fig.text(108 / 1920, y - 52 / 1080, use, fontsize=38, fontweight="bold", va="top",
+                 color=PINK if "graph" in use else INK)
+        # Lines are placed one by one; matplotlib's line spacing leaves too big a gap here.
+        for j, line in enumerate(proof.split("\n")):
+            fig.text(1010 / 1920, y - (6 + 48 * j) / 1080, line, fontsize=28, color=INK2, va="top")
+    fig.text(108 / 1920, 1 - 960 / 1080, "Works with Graphiti, Cognee, LangChain and LlamaIndex.", fontsize=26,
+             color=INK2, va="top")
+    if qr and qr.exists():
+        ax = fig.add_axes([1590 / 1920, 1 - 1055 / 1080, 250 / 1920, 250 / 1080])
+        ax.imshow(plt.imread(qr), cmap="gray", vmin=0, vmax=1)
+        ax.axis("off")
+        fig.text(1560 / 1920, 1 - 880 / 1080, "Run the\nbenchmark", fontsize=26, color=INK2, ha="right", va="top")
     fig.savefig(out / "slide_takeaways.png", facecolor="#1e1e1e")
+    plt.close(fig)
+
+
+def write_tail_chart(runs: list[Path], out: Path, plt) -> None:
+    """Slowest 1% of reads on 1M edges while agents write, graph databases only.
+
+    Points are the median of the runs; the end label gives the range across runs.
+    """
+    data = [json.loads(p.read_text()) for p in runs]
+    fig, ax = _fig(plt)
+    style = {"falkordb": ("FalkorDB", PINK, "-"), "memgraph": ("Memgraph", GRAY, "--"), "neo4j": ("Neo4j", GRAY, ":")}
+    ends = {}
+    for eng in ("memgraph", "neo4j", "falkordb"):
+        rows = [next(r for r in d["single"] if r["engine"] == eng)["concurrency"] for d in data]
+        xs = [c["writers"] for c in rows[0]]
+        per = [[run[k]["page"]["p99"] for run in rows] for k in range(len(xs))]
+        label, color, ls = style[eng]
+        ax.plot(xs, [float(np.median(v)) for v in per], ls, color=color, linewidth=3, marker="o", markersize=8)
+        ends[eng] = (xs[-1], float(np.median(per[-1])), min(per[-1]), max(per[-1]))
+    # Memgraph and Neo4j end close together, so they share one label and one range.
+    x, _, _, _ = ends["falkordb"]
+    lo = min(ends[e][2] for e in ("memgraph", "neo4j"))
+    hi = max(ends[e][3] for e in ("memgraph", "neo4j"))
+    mid = (ends["memgraph"][1] * ends["neo4j"][1]) ** 0.5
+    ax.annotate(f"Neo4j,\nMemgraph\n{lo:.0f}-{hi:.0f} ms", (x, mid), xytext=(22, 0), textcoords="offset points",
+                va="center", fontsize=NOTE, color=INK2)
+    _, y, lo, hi = ends["falkordb"]
+    ax.annotate(f"FalkorDB\n{lo:.1f}-{hi:.1f} ms", (x, y), xytext=(22, 0), textcoords="offset points",
+                va="center", fontsize=NOTE, color=PINK)
+    ax.set_yscale("log")
+    ax.set_ylim(0.1, 100)
+    ticks = [0.1, 0.3, 1, 3, 10, 30, 100]
+    ax.set_yticks(ticks, [f"{t:g}" for t in ticks])
+    ax.minorticks_off()
+    ax.set_xticks([c for c in (0, 5, 10, 20)])
+    ax.set_xlabel("Agents writing at once (1M edges)", color=INK2, fontsize=LABEL)
+    ax.set_ylabel("Slowest 1% of reads (ms, log)", color=INK2, fontsize=LABEL)
+    ax.margins(x=0.08)
+    ax.set_xlim(-1.5, 27)
+    fig.tight_layout()
+    fig.savefig(out / "slide_write_tail.png", facecolor=SURFACE)
     plt.close(fig)
 
 
@@ -333,7 +499,14 @@ def main(root: Path) -> Path:
     big = root.parent / "big"
     if (big / "next" / "graph").exists():
         next_session_slide(big, root.parent.parent / "cache" / "extract", out, plt)
-    takeaways_slide(out, plt)
+    runs = [p for p in (root.parent / "graphs" / "graphs.json", root.parent / "rerun2" / "graphs" / "graphs.json",
+                        root.parent / "rerun3" / "graphs" / "graphs.json") if p.exists()]
+    if runs:
+        write_tail_chart(runs, out, plt)
+    if (root / "ops" / "full" / "L200-w1-r1.jsonl").exists():
+        hook_slide(root / "ops", out, plt)
+        hook_slide(root / "ops", out, plt, only_full=True)
+    takeaways_slide(out, plt, root.parent.parent / "scratch" / "repo_qr.png")
     return out
 
 

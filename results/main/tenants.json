@@ -1,0 +1,86 @@
+{
+  "image": "falkordb/falkordb:6.0.1",
+  "runs": [
+    {
+      "graphs": 10000,
+      "keys": 20000,
+      "edges_per_graph": 407,
+      "build_s": 54.8,
+      "used_mb": 2815.3,
+      "rss_mb": 3268.3,
+      "kb_per_graph_used": 288.3,
+      "kb_per_graph_rss": 334.7,
+      "read_idle_ms": {
+        "p50": 0.738,
+        "p99": 3.065,
+        "n": 2000
+      },
+      "read_with_writers_ms": {
+        "p50": 1.257,
+        "p99": 13.156,
+        "n": 2000
+      },
+      "writers": 8,
+      "writes_per_s": 3048,
+      "delete_graph_ms": {
+        "p50": 0.232,
+        "p99": 0.802,
+        "n": 200
+      }
+    },
+    {
+      "graphs": 10000,
+      "keys": 20000,
+      "edges_per_graph": 410,
+      "build_s": 39.7,
+      "used_mb": 3010.5,
+      "rss_mb": 3005.7,
+      "kb_per_graph_used": 308.3,
+      "kb_per_graph_rss": 307.8,
+      "read_idle_ms": {
+        "p50": 0.647,
+        "p99": 2.421,
+        "n": 2000
+      },
+      "read_with_writers_ms": {
+        "p50": 0.858,
+        "p99": 2.258,
+        "n": 2000
+      },
+      "writers": 8,
+      "writes_per_s": 7180,
+      "delete_graph_ms": {
+        "p50": 0.251,
+        "p99": 0.913,
+        "n": 200
+      }
+    },
+    {
+      "graphs": 10000,
+      "keys": 20000,
+      "edges_per_graph": 414,
+      "build_s": 46.5,
+      "used_mb": 3011.4,
+      "rss_mb": 3004.4,
+      "kb_per_graph_used": 308.4,
+      "kb_per_graph_rss": 307.6,
+      "read_idle_ms": {
+        "p50": 0.584,
+        "p99": 1.691,
+        "n": 2000
+      },
+      "read_with_writers_ms": {
+        "p50": 0.882,
+        "p99": 2.858,
+        "n": 2000
+      },
+      "writers": 8,
+      "writes_per_s": 6761,
+      "delete_graph_ms": {
+        "p50": 0.166,
+        "p99": 0.499,
+        "n": 200
+      }
+    }
+  ]
+}
