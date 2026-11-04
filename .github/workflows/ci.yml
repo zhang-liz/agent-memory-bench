@@ -1,0 +1,37 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      falkordb:
+        image: falkordb/falkordb:6.0.1
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: astral-sh/setup-uv@v10.3.3
+        with:
+          enable-cache: true
+      - run: uv sync --locked
+      - name: Run tests, with the FalkorDB test on
+        run: uv run pytest -q -rs
+      - name: Run the offline benchmark with a fake model
+        run: uv run amb ops --fake --extract oracle --lengths 50 --worlds 1 --out scratch/dry
+      - name: Check that the published tables rebuild from the raw logs
+        run: |
+          uv run amb analyze --out results/main
+          git diff --exit-code results/main

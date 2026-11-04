@@ -1,5 +1,7 @@
 # agent-memory-bench
 
+[![CI](https://github.com/zhang-liz/agent-memory-bench/actions/workflows/ci.yml/badge.svg)](https://github.com/zhang-liz/agent-memory-bench/actions/workflows/ci.yml)
+
 Does moving an agent's memory out of the context window and into a graph cut
 its token bill without hurting accuracy? This repo runs a fair test of that
 claim against five baselines, on a synthetic long-horizon task and on a public
