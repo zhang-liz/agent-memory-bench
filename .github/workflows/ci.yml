@@ -34,4 +34,5 @@ jobs:
       - name: Check that the published tables rebuild from the raw logs
         run: |
           uv run amb analyze --out results/main
-          git diff --exit-code results/main
+          # Charts are not compared: Linux and macOS draw fonts differently.
+          git diff --exit-code -- results/main/report/report.md
